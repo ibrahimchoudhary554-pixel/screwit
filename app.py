@@ -1,4 +1,3 @@
-
 import streamlit as st
 import google.generativeai as genai
 from streamlit_gsheets import GSheetsConnection
@@ -9,10 +8,7 @@ import os
 st.set_page_config(page_title="Data-Fed Bot", layout="centered")
 
 # 1. Initialize Google Sheets Connection
-try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-except Exception as e:
-    st.error(f"Connection Setup Error: {e}")
+conn = st.connection("gsheets", type=GSheetsConnection)
 
 # 2. Configure Gemini AI
 if "GEMINI_API_KEY" in st.secrets:
@@ -42,25 +38,34 @@ if not st.session_state.logged_in:
     
     if st.button("Enter the Matrix"):
         try:
-            # Force read with URL from secrets to bypass "NotFound" errors
+            # We use st.secrets specifically to ensure the URL is pulled correctly
             sheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+            
+            # Read the 'Users' tab - this is where the capital 'Users' matters!
             df = conn.read(spreadsheet=sheet_url, worksheet="Users")
             
-            # Clean data: Convert to string and remove spaces
-            df = df.astype(str).apply(lambda x: x.str.strip())
-            
-            # Match credentials (case-sensitive to what's in your sheet headers)
-            user_match = (df['username'] == input_user) & (df['password'] == input_pw)
-            
-            if user_match.any():
-                st.session_state.logged_in = True
-                st.success("Access Granted!")
-                st.rerun()
+            # Check if dataframe is empty
+            if df.empty:
+                st.error("The 'Users' sheet is empty! Add a username/password to row 2.")
             else:
-                st.error("Access Denied. Check your username/password in the sheet.")
+                # Clean data: Convert to string and remove hidden spaces
+                df = df.astype(str).apply(lambda x: x.str.strip())
+                
+                # Verify column names exist
+                if 'username' in df.columns and 'password' in df.columns:
+                    user_match = (df['username'] == input_user) & (df['password'] == input_pw)
+                    
+                    if user_match.any():
+                        st.session_state.logged_in = True
+                        st.success("Access Granted!")
+                        st.rerun()
+                    else:
+                        st.error("Access Denied. Check your spreadsheet row 2.")
+                else:
+                    st.error(f"Headers mismatch! Sheet headers are: {list(df.columns)}")
         except Exception as e:
             st.error(f"Login Error: {e}")
-            st.info("Make sure your Sheet has a tab named 'Users' and is shared with the bot's email.")
+            st.info("Ensure tab name is 'Users' and the bot email has Editor access.")
     st.stop()
 
 # --- CHAT INTERFACE ---
