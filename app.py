@@ -33,7 +33,7 @@ if not st.session_state.logged_in:
     pw = st.text_input("Password", type="password")
     
     if st.button("Enter the Matrix"):
-        df = conn.read(worksheet="users")
+        df = conn.read(worksheet="Users")
         if ((df['username'] == user) & (df['password'] == pw)).any():
             st.session_state.logged_in = True
             st.rerun()
@@ -73,3 +73,4 @@ if prompt := st.chat_input("Ask me about your file..."):
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
             st.error(f"Gemini had a stroke: {e}")
+
