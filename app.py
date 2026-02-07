@@ -8,24 +8,34 @@ st.set_page_config(page_title="The Bot That Finally Works", layout="centered")
 # Initialize Connection
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- THE SMART MODEL PICKER ---
+# --- CONFIGURE GEMINI ---
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     
-    # We try three different names in order of likelihood
-    model_names = ['gemini-1.5-flash', 'models/gemini-1.5-flash', 'gemini-pro']
+    # Updated model names - try the most common variants
+    # Note: Using 'gemini-1.5-flash-latest' is more reliable
+    model_names = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-pro', 'models/gemini-pro']
     model = None
     
     for name in model_names:
         try:
-            test_model = genai.GenerativeModel(name)
-            # We don't actually call the API yet, just assign the name
-            model = test_model
-            break
-        except:
+            model = genai.GenerativeModel(name)
+            # Test with a simple prompt to verify the model works
+            test_response = model.generate_content("test")
+            if test_response and hasattr(test_response, 'text'):
+                st.success(f"✓ Using model: {name}")
+                break
+            else:
+                model = None
+        except Exception as e:
             continue
+    
+    if not model:
+        st.error("Could not initialize any Gemini model. Please check your API key and model availability.")
+        st.stop()
 else:
     st.error("Add GEMINI_API_KEY to your Secrets!")
+    st.stop()
 
 # --- LOGIN ---
 if 'auth' not in st.session_state:
@@ -69,10 +79,35 @@ if prompt := st.chat_input("Say something..."):
     
     with st.chat_message("assistant"):
         try:
-            # We use a standard generation call
-            res = model.generate_content(prompt)
-            st.markdown(res.text)
-            st.session_state.history.append({"role": "assistant", "content": res.text})
+            # Generate response with error handling
+            with st.spinner("Thinking..."):
+                response = model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        temperature=0.7,
+                        max_output_tokens=500,
+                    )
+                )
+                
+                if response.text:
+                    st.markdown(response.text)
+                    st.session_state.history.append({"role": "assistant", "content": response.text})
+                else:
+                    st.error("No response from AI. Please try again.")
+                    
         except Exception as e:
             st.error(f"AI Error: {e}")
-            st.info("Check if your API Key is active at aistudio.google.com")
+            st.info("Check if your API Key is active at [aistudio.google.com](https://aistudio.google.com)")
+            
+            # Optionally clear model and retry
+            if "model" in st.session_state:
+                del st.session_state.model
+
+# Add a clear chat button in sidebar
+with st.sidebar:
+    st.header("Chat Controls")
+    if st.button("Clear Chat History"):
+        st.session_state.history = []
+        st.rerun()
+    st.divider()
+    st.caption("Using Gemini API")
