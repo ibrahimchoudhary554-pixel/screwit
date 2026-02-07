@@ -1,15 +1,18 @@
 import streamlit as st
 import google.generativeai as genai
 from streamlit_gsheets import GSheetsConnection
+import pandas as pd
 import os
 
 # --- AUTH & CONFIG ---
 st.set_page_config(page_title="Data-Fed Bot", layout="centered")
 
-# Initialize Google Sheets for the "bouncer" (Login)
+# 1. Initialize Google Sheets Connection
+# Ensure your Secrets have [connections.gsheets] correctly set up!
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Configure Gemini
+# 2. Configure Gemini AI
+# Make sure GEMINI_API_KEY is in your Secrets!
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 model = genai.GenerativeModel('gemini-1.5-flash')
 
@@ -18,9 +21,8 @@ def load_training_data(filepath="data.txt"):
     if os.path.exists(filepath):
         with open(filepath, "r", encoding="utf-8") as f:
             return f.read()
-    return "No training data found. The AI is currently as empty-headed as a Kardashian."
+    return "No training data found in data.txt. Feed me some knowledge!"
 
-# Load that sweet, sweet data
 knowledge_base = load_training_data()
 
 # --- LOGIN SYSTEM ---
@@ -29,48 +31,62 @@ if 'logged_in' not in st.session_state:
 
 if not st.session_state.logged_in:
     st.title("🔒 Security Check")
-    user = st.text_input("username")
-    pw = st.text_input("Password", type="password")
+    
+    # Use lowercase labels to match your spreadsheet headers in the screenshot
+    input_user = st.text_input("Username")
+    input_pw = st.text_input("Password", type="password")
     
     if st.button("Enter the Matrix"):
-        df = conn.read(worksheet="Users")
-        if ((df['username'] == user) & (df['password'] == pw)).any():
-            st.session_state.logged_in = True
-            st.rerun()
-        else:
-            st.error("Access Denied. Go sit in the corner.")
+        try:
+            # Read the 'Users' tab
+            df = conn.read(worksheet="Users")
+            
+            # Clean data: Convert everything to string and strip spaces
+            df = df.astype(str).apply(lambda x: x.str.strip())
+            
+            # Check if the credentials exist in the sheet
+            # Matches 'username' and 'password' headers exactly as seen in your screenshot
+            user_match = (df['username'] == input_user) & (df['password'] == input_pw)
+            
+            if user_match.any():
+                st.session_state.logged_in = True
+                st.success("Access Granted! Welcome back.")
+                st.rerun()
+            else:
+                st.error("Access Denied. That's not in the spreadsheet.")
+        except Exception as e:
+            st.error(f"Spreadsheet Error: {e}. Check if tab name is 'Users' and shared with the bot email.")
     st.stop()
 
 # --- CHAT INTERFACE ---
-st.title("🤖 The 'I Know Your Data' Bot")
+st.title("🤖 Your AI Puppet")
 
+# Initialize Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Show the messages
+# Display Chat History
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
 # User Input
-if prompt := st.chat_input("Ask me about your file..."):
+if prompt := st.chat_input("Ask me something..."):
+    # Add user message to UI and history
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Combine the file content with the user's question
-    # We tell the AI: "Here is the Bible of Truth (data.txt), now answer the human."
-    context_prompt = (
-        f"You are a helpful assistant. Use the following context to answer the user's question.\n\n"
-        f"CONTEXT FROM DATA.TXT:\n{knowledge_base}\n\n"
-        f"USER QUESTION: {prompt}"
+    # Combine file content (training data) with the user question
+    full_prompt = (
+        f"Context from data.txt:\n{knowledge_base}\n\n"
+        f"User Question: {prompt}"
     )
     
     with st.chat_message("assistant"):
         try:
-            response = model.generate_content(context_prompt)
+            response = model.generate_content(full_prompt)
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
             st.error(f"Gemini had a stroke: {e}")
-
