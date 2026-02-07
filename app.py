@@ -12,26 +12,24 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     
-    # Updated model names - try the most common variants
-    # Note: Using 'gemini-1.5-flash-latest' is more reliable
-    model_names = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-pro', 'models/gemini-pro']
-    model = None
-    
-    for name in model_names:
-        try:
-            model = genai.GenerativeModel(name)
-            # Test with a simple prompt to verify the model works
-            test_response = model.generate_content("test")
-            if test_response and hasattr(test_response, 'text'):
-                st.success(f"✓ Using model: {name}")
-                break
-            else:
-                model = None
-        except Exception as e:
-            continue
-    
-    if not model:
-        st.error("Could not initialize any Gemini model. Please check your API key and model availability.")
+    # Try gemini-pro first (this is the free tier model)
+    try:
+        model = genai.GenerativeModel('gemini-pro')
+        # Quick test to verify the model works
+        test_response = model.generate_content("Hi")
+        if test_response and hasattr(test_response, 'text'):
+            st.success("✓ Using model: gemini-pro")
+        else:
+            st.error("Model test failed. Response invalid.")
+            st.stop()
+    except Exception as e:
+        st.error(f"Failed to initialize Gemini: {e}")
+        st.info("""
+        Common issues:
+        1. Make sure your API key is valid at https://aistudio.google.com
+        2. Ensure you've enabled the Gemini API in Google Cloud
+        3. Try using 'gemini-1.0-pro' if 'gemini-pro' doesn't work
+        """)
         st.stop()
 else:
     st.error("Add GEMINI_API_KEY to your Secrets!")
@@ -68,46 +66,61 @@ st.title("🤖 Chatbot (Round 10?)")
 if "history" not in st.session_state:
     st.session_state.history = []
 
+# Display chat history
 for m in st.session_state.history:
     with st.chat_message(m["role"]):
         st.markdown(m["content"])
 
 if prompt := st.chat_input("Say something..."):
+    # Add user message to history
     st.session_state.history.append({"role": "user", "content": prompt})
+    
+    # Display user message
     with st.chat_message("user"):
         st.markdown(prompt)
     
+    # Display assistant response
     with st.chat_message("assistant"):
         try:
-            # Generate response with error handling
             with st.spinner("Thinking..."):
                 response = model.generate_content(
                     prompt,
                     generation_config=genai.types.GenerationConfig(
                         temperature=0.7,
-                        max_output_tokens=500,
+                        top_p=0.8,
+                        top_k=40,
+                        max_output_tokens=1024,
                     )
                 )
                 
-                if response.text:
-                    st.markdown(response.text)
-                    st.session_state.history.append({"role": "assistant", "content": response.text})
+                if response and response.text:
+                    response_text = response.text
+                    st.markdown(response_text)
+                    # Add assistant response to history
+                    st.session_state.history.append({"role": "assistant", "content": response_text})
                 else:
-                    st.error("No response from AI. Please try again.")
+                    error_msg = "No response from AI. Please try again."
+                    st.error(error_msg)
                     
         except Exception as e:
-            st.error(f"AI Error: {e}")
+            error_msg = f"AI Error: {str(e)}"
+            st.error(error_msg)
             st.info("Check if your API Key is active at [aistudio.google.com](https://aistudio.google.com)")
-            
-            # Optionally clear model and retry
-            if "model" in st.session_state:
-                del st.session_state.model
 
-# Add a clear chat button in sidebar
+# Sidebar controls
 with st.sidebar:
     st.header("Chat Controls")
     if st.button("Clear Chat History"):
         st.session_state.history = []
         st.rerun()
+    
     st.divider()
-    st.caption("Using Gemini API")
+    st.subheader("Debug Info")
+    st.write(f"Messages in history: {len(st.session_state.history)}")
+    
+    if st.button("Test Model Connection"):
+        try:
+            test_response = model.generate_content("Say 'Connection successful' if you can hear me.")
+            st.success(f"✓ Connection test passed: {test_response.text[:50]}...")
+        except Exception as e:
+            st.error(f"✗ Test failed: {e}")
