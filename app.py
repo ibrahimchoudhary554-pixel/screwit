@@ -9,31 +9,44 @@ st.set_page_config(page_title="The Bot That Finally Works", layout="centered")
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- CONFIGURE GEMINI ---
+# ... (same imports and setup)
+
+# --- CONFIGURE GEMINI ---
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     
-    # Try gemini-pro first (this is the free tier model)
-    try:
-        model = genai.GenerativeModel('gemini-pro')
-        # Quick test to verify the model works
-        test_response = model.generate_content("Hi")
-        if test_response and hasattr(test_response, 'text'):
-            st.success("✓ Using model: gemini-pro")
-        else:
-            st.error("Model test failed. Response invalid.")
-            st.stop()
-    except Exception as e:
-        st.error(f"Failed to initialize Gemini: {e}")
+    # Try different model names in order
+    model_names = ['gemini-pro', 'gemini-1.0-pro', 'models/gemini-pro']
+    
+    model = None
+    selected_model = None
+    
+    for model_name in model_names:
+        try:
+            model = genai.GenerativeModel(model_name)
+            # Quick test
+            test_response = model.generate_content("Test")
+            if test_response and hasattr(test_response, 'text'):
+                selected_model = model_name
+                st.success(f"✓ Using model: {selected_model}")
+                break
+        except Exception as e:
+            continue
+    
+    if not model:
+        st.error("Could not initialize any Gemini model.")
         st.info("""
-        Common issues:
-        1. Make sure your API key is valid at https://aistudio.google.com
-        2. Ensure you've enabled the Gemini API in Google Cloud
-        3. Try using 'gemini-1.0-pro' if 'gemini-pro' doesn't work
+        Steps to fix:
+        1. Get a new API key: https://aistudio.google.com/app/apikey
+        2. Enable Gemini API: https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com
+        3. Make sure billing is set up (free tier available)
         """)
         st.stop()
 else:
     st.error("Add GEMINI_API_KEY to your Secrets!")
     st.stop()
+
+# ... (rest of the code remains the same)
 
 # --- LOGIN ---
 if 'auth' not in st.session_state:
@@ -124,3 +137,4 @@ with st.sidebar:
             st.success(f"✓ Connection test passed: {test_response.text[:50]}...")
         except Exception as e:
             st.error(f"✗ Test failed: {e}")
+
