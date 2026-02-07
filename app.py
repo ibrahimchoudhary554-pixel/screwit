@@ -1,3 +1,4 @@
+
 import streamlit as st
 import google.generativeai as genai
 from streamlit_gsheets import GSheetsConnection
@@ -8,20 +9,24 @@ import os
 st.set_page_config(page_title="Data-Fed Bot", layout="centered")
 
 # 1. Initialize Google Sheets Connection
-# Ensure your Secrets have [connections.gsheets] correctly set up!
-conn = st.connection("gsheets", type=GSheetsConnection)
+try:
+    conn = st.connection("gsheets", type=GSheetsConnection)
+except Exception as e:
+    st.error(f"Connection Setup Error: {e}")
 
 # 2. Configure Gemini AI
-# Make sure GEMINI_API_KEY is in your Secrets!
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel('gemini-1.5-flash')
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    model = genai.GenerativeModel('gemini-1.5-flash')
+else:
+    st.error("Missing GEMINI_API_KEY in secrets!")
 
 # --- DATA LOADING ---
 def load_training_data(filepath="data.txt"):
     if os.path.exists(filepath):
         with open(filepath, "r", encoding="utf-8") as f:
             return f.read()
-    return "No training data found in data.txt. Feed me some knowledge!"
+    return "No training data found in data.txt."
 
 knowledge_base = load_training_data()
 
@@ -29,56 +34,50 @@ knowledge_base = load_training_data()
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
-f not st.session_state.logged_in:
+if not st.session_state.logged_in:
     st.title("🔒 Security Check")
-    input_user = st.text_input("Username")
-    input_pw = st.text_input("Password", type="password") # <--- Line 38
     
-    if st.button("Enter the Matrix"):
-        # Everything in here is indented even further...
+    input_user = st.text_input("Username").strip()
+    input_pw = st.text_input("Password", type="password").strip()
     
     if st.button("Enter the Matrix"):
         try:
-            # Read the 'Users' tab
-            df = conn.read(worksheet="Users")
+            # Force read with URL from secrets to bypass "NotFound" errors
+            sheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+            df = conn.read(spreadsheet=sheet_url, worksheet="Users")
             
-            # Clean data: Convert everything to string and strip spaces
+            # Clean data: Convert to string and remove spaces
             df = df.astype(str).apply(lambda x: x.str.strip())
             
-            # Check if the credentials exist in the sheet
-            # Matches 'username' and 'password' headers exactly as seen in your screenshot
+            # Match credentials (case-sensitive to what's in your sheet headers)
             user_match = (df['username'] == input_user) & (df['password'] == input_pw)
             
             if user_match.any():
                 st.session_state.logged_in = True
-                st.success("Access Granted! Welcome back.")
+                st.success("Access Granted!")
                 st.rerun()
             else:
-                st.error("Access Denied. That's not in the spreadsheet.")
+                st.error("Access Denied. Check your username/password in the sheet.")
         except Exception as e:
-            st.error(f"Spreadsheet Error: {e}. Check if tab name is 'Users' and shared with the bot email.")
+            st.error(f"Login Error: {e}")
+            st.info("Make sure your Sheet has a tab named 'Users' and is shared with the bot's email.")
     st.stop()
 
 # --- CHAT INTERFACE ---
 st.title("🤖 Your AI Puppet")
 
-# Initialize Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display Chat History
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# User Input
 if prompt := st.chat_input("Ask me something..."):
-    # Add user message to UI and history
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Combine file content (training data) with the user question
     full_prompt = (
         f"Context from data.txt:\n{knowledge_base}\n\n"
         f"User Question: {prompt}"
@@ -90,6 +89,4 @@ if prompt := st.chat_input("Ask me something..."):
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
-            st.error(f"Gemini had a stroke: {e}")
-
-
+            st.error(f"Gemini Error: {e}")
