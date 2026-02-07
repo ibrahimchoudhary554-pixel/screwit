@@ -8,11 +8,11 @@ st.set_page_config(page_title="Data Bot", layout="centered")
 # Initialize Connection
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- THE FIX IS HERE ---
-# We use gemini-1.5-flash which is the current standard.
+# --- THE FIX: ROBUST MODEL LOADING ---
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('gemini-1.5-flash') 
+    # We use 'gemini-1.5-flash-latest' to avoid the 404 version error
+    model = genai.GenerativeModel('gemini-1.5-flash-latest') 
 else:
     st.error("Check your Streamlit Secrets for GEMINI_API_KEY")
 
@@ -38,24 +38,22 @@ if not st.session_state.auth:
                 stored_password = str(user_found['password'].values[0])
                 if stored_password == str(pass_in):
                     st.session_state.auth = True
-                    st.success("Access Granted! Loading Chat...")
+                    st.success("Access Granted!")
                     st.rerun()
                 else:
-                    st.error(f"Wrong password.")
+                    st.error("Wrong password.")
             else:
                 st.error(f"User '{user_in}' not found.")
-                
         except Exception as e:
             st.error(f"System Error: {e}")
     st.stop()
 
 # --- CHAT INTERFACE ---
-st.title("🤖 Chatbot Live")
+st.title("🤖 AI is Live")
 
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# Display chat history
 for m in st.session_state.history:
     with st.chat_message(m["role"]):
         st.markdown(m["content"])
@@ -67,10 +65,17 @@ if prompt := st.chat_input("Ask me something..."):
     
     with st.chat_message("assistant"):
         try:
-            # Generate the response
+            # We call the model here
             res = model.generate_content(prompt)
             st.markdown(res.text)
             st.session_state.history.append({"role": "assistant", "content": res.text})
         except Exception as e:
-            st.error(f"AI Error: {e}")
-            st.info("If you see 'NotFound', try changing 'gemini-1.5-flash' to 'gemini-1.5-pro' in the code.")
+            # If it still fails, we try the older pro model as a backup
+            try:
+                backup_model = genai.GenerativeModel('gemini-pro')
+                res = backup_model.generate_content(prompt)
+                st.markdown(res.text)
+                st.session_state.history.append({"role": "assistant", "content": res.text})
+            except:
+                st.error(f"AI Still Grumpy: {e}")
+                st.info("Check Google AI Studio to see which models are enabled for your key.")
