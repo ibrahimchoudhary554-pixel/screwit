@@ -29,11 +29,11 @@ if 'logged_in' not in st.session_state:
 
 if not st.session_state.logged_in:
     st.title("🔒 Security Check")
-    user = st.text_input("Username")
+    user = st.text_input("username")
     pw = st.text_input("Password", type="password")
     
     if st.button("Enter the Matrix"):
-        df = conn.read(worksheet="Users")
+        df = conn.read(worksheet="users")
         if ((df['username'] == user) & (df['password'] == pw)).any():
             st.session_state.logged_in = True
             st.rerun()
