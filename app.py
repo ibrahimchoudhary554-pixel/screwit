@@ -11,7 +11,7 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 # Configure Gemini
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-pro')
 
 if 'auth' not in st.session_state:
     st.session_state.auth = False
@@ -64,3 +64,4 @@ if prompt := st.chat_input("Ask me something..."):
     with st.chat_message("assistant"):
         res = model.generate_content(prompt)
         st.markdown(res.text)
+
