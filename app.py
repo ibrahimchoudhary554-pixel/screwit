@@ -29,13 +29,13 @@ knowledge_base = load_training_data()
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
-if not st.session_state.logged_in:
+f not st.session_state.logged_in:
     st.title("🔒 Security Check")
+    input_user = st.text_input("Username")
+    input_pw = st.text_input("Password", type="password") # <--- Line 38
     
-    # Use lowercase labels to match your spreadsheet headers in the screenshot
-    # Change line 36 to this:
-df = conn.read(spreadsheet=st.secrets["connections"]["gsheets"]["spreadsheet"], worksheet="Users")
-    input_pw = st.text_input("Password", type="password")
+    if st.button("Enter the Matrix"):
+        # Everything in here is indented even further...
     
     if st.button("Enter the Matrix"):
         try:
@@ -91,4 +91,5 @@ if prompt := st.chat_input("Ask me something..."):
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
             st.error(f"Gemini had a stroke: {e}")
+
 
